@@ -2,32 +2,42 @@
 
 от Karpov.Courses [Karpov.Courses](https://karpov.courses/simulator)
 
-# Анализ двух ключевых событий приложения.
+# Анализ ключевых событий приложения: маркетинговая компания и сбой аудитории
 
-Проект анализа ключевых событий приложения в Apache Superset.
-
+ **Дашборд для анализа ключевых событий приложения:**
+  
+ - Отслеживание пользовательской активности и retention;
+ - Мониторинг метрик вовлеченности (лайки, просмотры, CTR);
+ - Демографический анализ аудитории (гео, возраст, устройства);
+ - Выявление аномалий и точек роста.
+   
 ## Вводные данные
 
-Социальная сеть с двумя сервисами:
+**1. Социальная сеть с двумя сервисами:**
 
- - **Лента новостей — просмотр и лайки постов**
- - **Мессенджер — обмен сообщениями**
+   - Лента новостей — просмотр и лайки постов
+   - Мессенджер — обмен сообщениями
 
-Все события хранятся в ClickHouse:
+**2. Все события хранятся в ClickHouse:**
 
- - **feed_actions — действия в ленте (просмотры, лайки)**
- - **message_actions — отправка сообщений**
+   - feed_actions — действия в ленте (просмотры, лайки)
+   - message_actions — отправка сообщений
 
-Произошедшие события:
+**3. Произошедшие события:**
 
-  - **Маркетинговая компания для привлечения новых пользовталей**
-  - **Резкое падение аудитории**
+   - **15.08.25**: была проведена маркетинговая компания для привлечения новых пользовталей.
+   
+   - **24.08.25**: произошло резкое падение аудитории.
 
 ## Задачи
-
+ **1. Анализ маркетинговой компании:**
+ 
    - Проанализировать характер Retention пользователей, привлечённых рекламной кампанией.
-   - Что стало с рекламными пользователями в дальнейшем, как часто они продолжают пользоваться приложением?
-   - Выяснить, какие пользователи не смогли воспользоваться лентой. Что их объединяет?
+   - Что стало с рекламными пользователями в дальнейшем, как часто они продолжают пользоваться приложением.
+     
+ **2. Анализ внезапного падения аудитрии**
+ 
+   - Выяснить, какие пользователи не смогли воспользоваться лентой. Что их объединяет.
 
 ## Инструменты
 
@@ -48,227 +58,247 @@
    - **os:** тип операционной системы;
    - **source:** источник входа(органический/рекламный).
 
-## 1. Анализ аудитории: общие данные
+## Анализ аудитории: Общие данные
 ![Анализ аудитории:общие данные](https://github.com/Alexa-grab/desktop-tutorial/blob/main/%D0%BE%D0%B1%D1%89%D0%B81.png)
 
-- #### DAU
+- ### DAU
   
   **Выводы по графику**
-   - Маркетинговая компания была проведена 15.08.25
-   - Резкое падение аудитории произошло 24.08.25
+  
+   - 15.08.25 резко увеличилось количество аудитории,что совпадает с днем проведения маркетинговой акции.
+   - 24.08.25 резкая просадка аудитории,возможно произошел технический сбой и часть пользователей не смогла воспользоваться приложением.
 
+- ### Общая динамика удержания пользователей (Retention) по неделям
 
-- #### Динамика удержания пользователей (Retention) по неделям
-
-  **Выводы по графику** 
-    График удержания демонстрирует позитивную динамику: в течение первых двух месяцев наблюдается уверенный рост лояльности пользователей, после чего метрика стабилизировалась, выйдя на устойчивое плато.  
-    Это указывает на то, что продукт или маркетинговая кампания успешно сформировали стабильное ядро лояльной аудитории.
+  **Выводы по графику**  
+    - График удержания демонстрирует позитивную динамику: в течение первых двух месяцев наблюдается уверенный рост лояльности пользователей, после чего метрика стабилизировалась, выйдя на устойчивое плато.Это указывает на то, что продукт или маркетинговая кампания успешно сформировали стабильное ядро лояльной аудитории.
     
-  **Код SQL**    
-```
--- Анализ еженедельного Retention: новых, вернувшихся и ушедших пользователей
+   **SQL запросы к графику**    
+  ```
+  -- Анализ еженедельного Retention: новых, вернувшихся и ушедших пользователей
 
--- Анализ УШЕДШИХ пользователей (Churn)
+  -- Анализ ушедших пользователей (статус= 'gone')
 
-Select this_week,
-previous_week,
--uniq(user_id) as count_users,-- Отрицательное значение для визуализации оттока
-status 
-From
-
-(SELECT user_id ,
-groupUniqArray(toMonday(toDate(time))) as weeks_visited, -- Массив всех недель посещения для каждого пользователя
-arrayJoin(weeks_visited) as previous_week, -- Разворачиваем массив в строки (каждая неделя как отдельная запись)
-addWeeks(previous_week,+1) as this_week, -- Следующая неделя после посещения
-'gone' as status -- Статус "ушел"
-From simulator_20250720.feed_actions 
-Group by user_id
-)
-where NOT has(weeks_visited, this_week)  -- Фильтр: пользователь НЕ был активен на следующей неделе
+  SELECT
+   this_week,
+   previous_week,
+   -uniq(user_id) as count_users,-- Отрицательное значение для визуализации оттока
+   status 
+  FROM
+  (
+   SELECT
+    user_id ,
+    groupUniqArray(toMonday(toDate(time))) as weeks_visited, -- Массив всех недель посещения для каждого пользователя
+    arrayJoin(weeks_visited) as previous_week, -- Разворачиваем массив в строки (каждая неделя как отдельная запись)
+    addWeeks(previous_week,+1) as this_week, -- Следующая неделя после посещения
+   'gone' as status -- Статус "ушел"
+   FROM simulator_20250720.feed_actions 
+   GROUP BY user_id
+  )
+  where NOT has(weeks_visited, this_week)  -- Фильтр: пользователь НЕ был активен на следующей неделе
   AND this_week <= toMonday(today())     -- Только завершенные недели (исключаем текущую)
-Group by this_week,previous_week,status
+  GROUP BY this_week,previous_week,status
 
-UNION ALL -- Объединяем с результатом анализа новых и вернувшихся пользователей
+  UNION ALL -- Объединяем с результатом анализа новых и вернувшихся пользователей
 
--- Анализ НОВЫХ и ВЕРНУВШИХСЯ пользователей
+  -- Анализ новых и продолжающих пользователей (статус='retained' и 'new')
 
-Select this_week,
-previous_week,
-toInt64(uniq(user_id)) as count_users, -- Положительное значение для прироста
-status 
-From
-
-(SELECT user_id ,
-groupUniqArray(toMonday(toDate(time))) as weeks_visited,
-arrayJoin(weeks_visited) AS this_week,   -- Текущая неделя активности
-addWeeks(this_week,-1) as previous_week, -- Предыдущая неделя
-IF  -- Проверяем был ли пользователь активен на предыдущей неделе
-(
-has(weeks_visited,addWeeks(this_week,-1)),
-'retained', -- Если ДА - "вернувшийся"
-'new')      -- Если НЕТ - "новый"
-as status
-From simulator_20250720.feed_actions 
-Group by user_id
-)
-
-Group by this_week,previous_week,status
-```
-## 2. Анализ маркетинговой компании 
+  SELECT
+  this_week,
+  previous_week,
+  toInt64(uniq(user_id)) as count_users, -- Положительное значение для прироста
+  status
+  FROM
+   (
+    SELECT
+     user_id ,
+     groupUniqArray(toMonday(toDate(time))) as weeks_visited,
+     arrayJoin(weeks_visited) AS this_week,   -- Текущая неделя активности
+     addWeeks(this_week,-1) as previous_week, -- Предыдущая неделя
+    IF                                        -- Проверяем был ли пользователь активен на предыдущей неделе
+     (
+     has(weeks_visited,addWeeks(this_week,-1)),
+     'retained',                               -- Если ДА  - "вернувшийся"
+     'new'                                     -- Если НЕТ - "новый"
+      ) as status
+     FROM simulator_20250720.feed_actions 
+     GROUP BY user_id
+   )
+  GROUP BY this_week,previous_week,status
+  ```
+## Событие № 1: Анализ проведенной маркетинговой компании 
 
 ![Аудиторные данные](https://github.com/Alexa-grab/desktop-tutorial/blob/main/%D1%80%D0%B5%D0%BA%D0%BB%D0%B0%D0%BC%D0%BD%D0%B0%D1%8F%20%D0%BA%D0%BE%D0%BC%D0%BF%D0%B0%D0%BD%D0%B8%D1%8F%201.png)
 
-- #### DAU за период с 12.08.25 по 19.09.25
+- ### DAU за период с 12.08.25 по 19.08.25
 
-**Выводы по графику**  
-  Маркетинговая кампания вызвала явный всплеск активности (DAU), достигнув пика 15 августа.
+  **Выводы по графику**
+    - Маркетинговая кампания вызвала высокий всплеск активности (DAU), достигнув пика 15 августа.
 
-- #### Пользователи привлеченные рекламной компанией
+- ### Пользователи привлеченные рекламной компанией
 
-**Выводы по графику**
+  **Выводы по графику**
+  
+    - Маркетинговая кампания дала значительный прирост: в день пика зафиксировано **8370** пользователей с рекламного трафика,что на **38%** больше, чем неделей ранее. Из них **2592** были новыми пользователями.
 
-Маркетинговая кампания дала значительный прирост: в день пика мы зафиксировали 8370 пользователей с рекламного трафика — на 38% больше, чем неделей ранее.  
-Из них 2592 были новыми пользователями.
-
-- #### Ретеншен 1го дня и последущая активность новых пользователей
+- ### Ретеншен 1-го дня и последущая активность новых пользователей
 
 ![heatmap](https://github.com/Alexa-grab/desktop-tutorial/blob/main/%D1%80%D0%B5%D0%BA%D0%BB%D0%B0%D0%BC%D0%BD%D0%B0%D1%8F%20%D0%BA%D0%BE%D0%BC%D0%BF%D0%B0%D0%BD%D0%B8%D1%8F%203.png)
 ![Ретеншен 1го дня](https://github.com/Alexa-grab/desktop-tutorial/blob/main/%D1%80%D0%B5%D0%BA%D0%BB%D0%B0%D0%BC%D0%BD%D0%B0%D1%8F%20%D0%BA%D0%BE%D0%BC%D0%BF%D0%B0%D0%BD%D0%B8%D1%8F%207.png)
 
-**Выводы по графикам** 
+  **Выводы по графикам**
+  
+   - Динамика удержания когорты от **15.08.25** тревожная: начавшись с крайне низкого показателя в **3.97%**, Retention продолжил снижаться и стабилизировался на отметке всего **1.31%**.
 
-Динамика удержания когорты от 15.08 тревожная: начавшись с крайне низкого показателя в 3.97%, Retention продолжил снижаться и стабилизировался на отметке всего 1.31%.
+  **SQL запросы к графикам:**
 
+   - **Heatmap retantion (тепловая карта)**
+  ```
+  -- Heatmap retention для анализа удержания пользователей
+  SELECT
+    toString(date) as date,           -- Дата активности (конвертируем в строку для визуализации)
+    toString(start_date) as start_date, -- Дата первого визита когорты (также в строку)
+    COUNT(user_id) as active_users,   -- Количество активных пользователей из когорты
+    source                            -- Источник трафика ('ads' или 'organic')
+  FROM
+    -- Подзапрос t1: определяем когорты пользователей из рекламного трафика
+     (
+  SELECT
+        user_id,
+        MIN(toDate(time)) as start_date,  -- Находим дату первого визита каждого пользователя
+        source 
+     FROM simulator_20250820.feed_actions
+     WHERE source = 'ads'                 -- Фильтруем только рекламный трафик
+     GROUP BY  user_id, source
+     HAVING start_date between '2025-08-12' and '2025-08-19'  -- Берем когорты за 8-дневный период
+     ) t1
+    
+    JOIN
+    -- Подзапрос t2: все даты активности всех пользователей
+    (
+      SELECT
+        distinct user_id,
+        toDate(time) as date 
+      FROM simulator_20250820.feed_actions 
+    ) t2
+  USING (user_id)  -- Соединяем по user_id чтобы найти все активности каждой когорты
 
-**SQL запросы к графикам**
+  GROUP BY date, start_date, source  -- Группируем для подсчета пользователей по дате, когорте и источнику
 
- - **heatmap retantion**
-```
--- heatmap retantion
-Select
-toString(date) as date,
-toString(start_date) as start_date,
-count(user_id) as active_users ,
-source
-From
+  UNION ALL  -- Объединяем результаты (без удаления дубликатов)
 
-(SELECT
-user_id,
-min(toDate(time)) as start_date,
-source 
-From simulator_20250820.feed_actions
-WHERE source ='ads'
-group by user_id,source
-having start_date between '2025-08-12' and '2025-08-19'
-) t1
+  -- Аналогичный запрос для органического трафика
+  SELECT
+    toString(date) as date,
+    toString(start_date) as start_date,
+    count(user_id) as active_users,
+    source
+  FROM
+    -- Подзапрос для органического трафика
+    (SELECT
+        user_id,
+        MIN(toDate(time)) as start_date,
+        source 
+     FROM simulator_20250820.feed_actions
+     WHERE source = 'organic'            -- Фильтруем только органический трафик
+     GROUP BY user_id, source
+     HAVING start_date between '2025-08-12' and '2025-08-19'  -- Тот же период когорт
+    ) t1
+    
+  JOIN
+    -- Тот же подзапрос с активностями 
+    (
+      SELECT
+        distinct user_id,
+        toDate(time) as date 
+      FROM simulator_20250820.feed_actions 
+    ) t2
+    USING (user_id)
 
-join
+  GROUP BY date, start_date, source
 
-(select
- distinct user_id,
-toDate(time) as date 
-From simulator_20250820.feed_actions ) t2
+  ```
 
-using user_id
-
-group by date,start_date,source
-
-UNION ALL
-
-Select
-toString(date) as date,
-toString(start_date) as start_date,
-count(user_id) as active_users ,
-source
-
-From
-(SELECT
-user_id,
-min(toDate(time)) as start_date,
-source 
-From simulator_20250820.feed_actions
-WHERE source ='organic'
-group by user_id,source
-having start_date >= '2025-08-15'
-) t1
-
-join
-
-(select
- distinct user_id,
- toDate(time) as date 
-From simulator_20250820.feed_actions ) t2
-
-using user_id
-
-group by date,start_date,source
-```
-
- - **Retantion 1го дня и дальнейшее поведение когорты**
+ - **Retantion 1-го дня и дальнейшее поведение когорты**
    
-```
-SELECT 
-    date,
-    count(user_id) as num_users,
-    source,
-    (num_users / first_day_users) as percentage_of_first_day
-FROM 
-(
+  ```
+  SELECT 
+    date,                        -- дата активности
+    COUNT(user_id) as num_users, -- Количество уникальных пользователей за дату и источник
+    source,                      -- Источник трафика
+    (num_users / first_day_users) as percentage_of_first_day  -- Retention rate: % от первоначальной когорты
+ FROM 
+   (
     SELECT 
         t2.date,
         t2.source,
         t1.start_day,
         t1.user_id,
-        -- Получаем количество пользователей в первый день для каждой группы
-        countIf(t1.user_id, t2.date = t1.start_day) OVER (PARTITION BY t2.source) as first_day_users
-    FROM 
-    (
+
+        -- Оконная функция: для каждого источника считаем сколько пользователей было в их первый день
+        -- CountIf считает только те строки, где дата активности совпадает с первым днем пользователя
+
+        CountIf(t1.user_id, t2.date = t1.start_day) OVER (PARTITION BY t2.source) as first_day_users
+     FROM 
+       (
+        -- Подзапрос t1: находим когорту пользователей, которые впервые появились 2025-08-15
         SELECT 
             user_id,
-            min(toDate(time)) as start_day 
+            MIN(toDate(time)) as start_day      -- Первый день активности каждого пользователя
         FROM simulator_20250820.feed_actions 
         GROUP BY user_id 
-        HAVING min(toDate(time)) = '2025-08-15'
-    ) t1
-    JOIN 
-    (
+        HAVING MIN(toDate(time)) = '2025-08-15' -- Фильтруем только пользователей дня '2025-08-15'
+       ) t1
+
+      JOIN
+
+      (
+        -- Подзапрос t2: все активности пользователей с их датами и источниками
         SELECT DISTINCT 
             user_id, 
             toDate(time) as date,
             source 
         FROM simulator_20250820.feed_actions 
-    ) t2 USING (user_id)
-)
-GROUP BY date, source, start_day, first_day_users
-ORDER BY date, source
-```
- #### Активность привлеченной аудитории
-
+      ) t2
+     USING (user_id)  -- Соединяем по user_id чтобы получить все активности когорты
+    )
+  -- Группируем по дате, источнику и first_day_users (который постоянен для каждого источника)
+  GROUP BY date, source, first_day_users
+  ORDER BY date, source
+  ```
+- ### Лайки и просмотры / CTR
 ![Активность привлеченной аудитории](https://github.com/Alexa-grab/desktop-tutorial/blob/main/%D1%80%D0%B5%D0%BA%D0%BB%D0%B0%D0%BC%D0%BD%D0%B0%D1%8F%20%D0%BA%D0%BE%D0%BC%D0%BF%D0%B0%D0%BD%D0%B8%D1%8F%206.png)
 
-**2.5. Лайки и просмотры**
- - Выводы
- - 
-**2.6. CTR**
-- Выводы
-- 
-#### Аудитория**
+   **Выводы по графикам**
+   
+   - Низкий уровень вовлеченности;
+   - CTR показывает недостаточную заинтересованность контентом;
+   - Показатели лайков и просмотров свидетельствуют о поверхностном взаимодействии с платформой;
+   - Между количеством просмотров и активными действиями (лайки) существует значительный разрыв,значит пользователи потребляют контент пассивно, без активного участия.
+     
+ - ### Демография аудитории
 
 ![Аудитория](https://github.com/Alexa-grab/desktop-tutorial/blob/main/%D1%80%D0%B5%D0%BA%D0%BB%D0%B0%D0%BC%D0%BD%D0%B0%D1%8F%20%D0%BA%D0%BE%D0%BC%D0%BF%D0%B0%D0%BD%D0%B8%D1%8F%205.png)
 
-**2.7. Пол/возраст/операционная система**
+   **Выводы по графикам**
 
-- ВЫВОДЫ
-```
-SELECT 
-    toDate(time) AS day,
-    user_id,
-    CASE
-        WHEN gender = 1 THEN 'Woman'
-        WHEN gender = 0 THEN 'Man'
-        ELSE 'Unknown'
-    END AS gender_text,
-    CASE 
+   - Целевая аудитория - молодые женщины 18-24 лет из крупных городов;
+   - Высокая урбанизация - более 83% аудитории сосредоточено в двух столицах (Москва и Санкт-Петербург);
+   - Мобильный трафик - преобладание Android указывает на важность мобильной оптимизации.
+
+  **SQL запросы к графикам**
+   
+  - **Пол/возраст/ОС**   
+   ```
+    SELECT 
+      toDate(time) AS day,
+      user_id,
+      CASE
+         WHEN gender = 1 THEN 'Woman'
+         WHEN gender = 0 THEN 'Man'
+         ELSE 'Unknown'
+      END AS gender_text,
+      CASE 
         WHEN age <= 17 THEN 'До 17' 
         WHEN age > 17 AND age <= 24 THEN '18-24 лет' 
         WHEN age > 24 AND age <= 34 THEN '25-34 лет' 
@@ -276,172 +306,174 @@ SELECT
         WHEN age > 44 AND age <= 54 THEN '45-54 лет' 
         WHEN age > 54 THEN '55+' 
         ELSE 'Не указан'
-    END AS age_group,
-    action,
-    source,
-    city,
-    os
-FROM simulator_20250820.feed_actions 
-Where  user_id IN (Select user_id from simulator_20250820.feed_actions 
-GROUP by user_id 
-having min(toDate(time))='2025-08-15')
-```
-
-**2.8. Топ - 5 самых популярных городов**
-
-- SQL запрос
-
-```
-SELECT 
-    city,
-    count(distinct user_id) as num_users_city,
-    source
-FROM simulator_20250820.feed_actions 
-WHERE toDate(time) = '2025-08-15' and source='ads'
-AND user_id IN (
-    SELECT user_id 
+     END AS age_group,
+     action,
+     source,
+     city,
+     os
+   FROM simulator_20250820.feed_actions 
+   WHERE  user_id IN
+    (
+    SELECT user_id
     FROM simulator_20250820.feed_actions 
-    GROUP BY user_id 
-    HAVING min(toDate(time)) = '2025-08-15'
-)
-GROUP BY city,source
-ORDER BY num_users_city DESC
-limit 5
-UNION All
+    GROUP by user_id 
+    HAVING MIN(toDate(time))='2025-08-15'
+    )
+   ```
 
-SELECT 
-    city,
-    count(distinct user_id) as num_users_city,
-    source
-FROM simulator_20250820.feed_actions 
-WHERE toDate(time) = '2025-08-15' and source='organic'
-AND user_id IN (
-    SELECT user_id 
+  - **Топ - 5 самых популярных городов** 
+ 
+  ```
+    SELECT 
+     city,
+     COUNT(distinct user_id) as num_users_city,
+     source
     FROM simulator_20250820.feed_actions 
-    GROUP BY user_id 
-    HAVING min(toDate(time)) = '2025-08-15'
-)
-GROUP BY city,source
-ORDER BY num_users_city DESC
-limit 5
-```
-### Результаты анализа маркетинговой компании от 15/08/25
+    WHERE toDate(time) = '2025-08-15' and source='ads'
+    AND user_id IN
+     (
+      SELECT
+       user_id 
+      FROM simulator_20250820.feed_actions 
+      GROUP BY user_id 
+      HAVING min(toDate(time)) = '2025-08-15'
+      )
+    GROUP BY city,source
+    ORDER BY num_users_city DESC
+    LIMIT 5
 
- По итогу было привлечено 2592 человека (это 3.3% от числа всех пользователей, по состоянию на 15.08).
- Основная аудитория – это женщины 18-24 лет из Москвы и СПБ.
- Основные наблюдения:
- - Retention
-  •	Retention  1 дня составил 3,97%.
-  •	Через 4 недели, охват привлеченных пользователей упал до  1% . 
-- Активность
-  •	Лайки и просмотры упали после первого дня использования и был небольшой всплеск активности 24.08.25 (когда произошел сбой системы).
-  •	График CTR имеет пилообразную форму, аномалий не замечено
-  Можно сделать вывод, что маркетинговая кампания была успешной, однако существуют сложности с удержанием привлечённых пользователей.
+    UNION All
 
-  ## 3. Падение аудитории от 24.08.25
+    SELECT 
+     city,
+     COUNT(distinct user_id) as num_users_city,
+     source
+    FROM simulator_20250820.feed_actions 
+    WHERE toDate(time) = '2025-08-15' and source='organic'
+    AND user_id IN
+     (
+      SELECT
+       user_id 
+      FROM simulator_20250820.feed_actions 
+      GROUP BY user_id 
+      HAVING min(toDate(time)) = '2025-08-15'
+      )
+    GROUP BY city,source
+    ORDER BY num_users_city DESC
+    LIMIT 5
+  ```
+## Маркетинговая компания: Основные выводы и рекомендации
+
+ **1. Основные выводы:**
+  
+  - Привлечено 2 592 пользователя (3.3% от общей базы);
+  - Ядро аудитории: женщины 18-24 лет из Москвы/СПб (Android);
+  - Катастрофически низкий retention: с 3.97% до 1% за 4 недели;
+  - Активность падает после первого дня, интерес не удерживается.
+
+**2. Критические проблемы:**
+  
+  - Реклама привлекает, но продукт не удерживает;
+  - Аудитория уходит после первого знакомства;
+  - Нет постоянной вовлеченности.
+
+ **3. Срочные рекомендации:**
+
+  - Пересмотреть онбординг - улучшить первое впечатление;
+  - Проанализировать соответствие рекламных обещаний и реального функционала;
+  - Оптимизировать контент под целевую аудиторию (женщины 18-24 лет;
+  - Внедрить триггеры возврата- уведомления, персональные рекомендации.
+
+ ### Вывод  
+ Компания успешна по привлечению, но требует срочных мер по удержанию аудитории.
+
+
+  ## Событие № 2: Резкое падение аудитории 24.08.25
   
  ![DAU](https://github.com/Alexa-grab/desktop-tutorial/blob/main/%D0%BF%D0%B0%D0%B4%D0%B5%D0%BD%D0%B8%D0%B5%205.png)
 
- **3.1 Анализ метрики DAU за период с 19/08/25 по 26/08/25**
- - ВЫВОД
+ - ### DAU за период с 19.08.25 по 26.08.25
+ 
+   **Выводы по графикам**
+  
+   - Зафиксировано резкое снижение DAU 24.08.25 - минус 2 122 пользователя по сравнению с предыдущим днем;
+   - Падение составило около 2,7% от общей аудитории;
+   - Снижение нетипично резкое - не соответствует обычным колебаниям активности.
 
-**3.2. Основные события за 24.08.25**
+ - ### Основные события за сутки
 
 ![Основыне события](https://github.com/Alexa-grab/desktop-tutorial/blob/main/%D0%BF%D0%B0%D0%B4%D0%B5%D0%BD%D0%B8%D0%B5%206.png)
 
- - СTR с интервалом 30 мин;
- - Все события с интервалом 30 мин;
- - Лайки и просмотры с интервалом 30 мин.
+  - СTR с интервалом 30 мин;
+  - Все события с интервалом 30 мин;
+  - Лайки и просмотры с интервалом 30 мин.
 
-- ВЫВОДЫ
+   **Выводы по графикам**  
 
-  **3.3. Пользователи,которые не смогли воспользоваться приложением 24.08.25**
+   - Сбой произошел в ночь с 23.08 на 24.08 - система уже к началу суток 24.08 работала нестабильно.
+   - Технический инцидент начался за несколько часов до первых видимых симптомов в 6:00. Необходимо анализировать логи с полуночи 24.08.
+       
+     **Хронология:**
+      - Ночь 23.08-24.08 - начало технических проблем;
+      - 6:00 утра - уже явное падение CTR;
+      - Весь день 24.08 - стабильно низкие показатели вовлеченности;
+      - 21:00 - попытка фикса/перезапуска системы.
   
-  **География активностей**
+ - ### География активностей
   
   ![города](https://github.com/Alexa-grab/desktop-tutorial/blob/main/%D0%BF%D0%B0%D0%B4%D0%B5%D0%BD%D0%B8%D0%B5%207%20%D0%B3%D0%BE%D1%80%D0%BE%D0%B4%D0%B0.png)
 
--ВЫВОД
--SQL код
+   **Выводы по графикам**  
+     
+  **24.08** произошел региональный сбой - отсутствуют пользователи из ключевых городов:
+   - Москва (обычно №1 по активности)
+   - Санкт-Петербург (обычно №2)
+   - Новосибирск, Екатеринбург (топ-5)
 
-```
-Select date,city,count_users from 
-(
-SELECT toDate(time) as date,city,Count(user_id) as count_users From simulator_20250820.feed_actions 
-WHERE toDate(time)='2025-08-19' 
-Group by toDate(time),city
-order by count_users desc,date 
-limit 5
-union all
-SELECT toDate(time) as date,city,Count(user_id) as count_users From simulator_20250820.feed_actions 
-WHERE toDate(time)='2025-08-20' 
-Group by toDate(time),city
-order by count_users desc,date 
-limit 5
-union all
-SELECT toDate(time) as date,city,Count(user_id) as count_users From simulator_20250820.feed_actions 
-WHERE toDate(time)='2025-08-21' 
-Group by toDate(time),city
-order by count_users desc,date 
-limit 5
-union all
-SELECT toDate(time) as date,city,Count(user_id) as count_users From simulator_20250820.feed_actions 
-WHERE toDate(time)='2025-08-22' 
-Group by toDate(time),city
-order by count_users desc,date 
-limit 5
-union all
-SELECT toDate(time) as date,city,Count(user_id) as count_users From simulator_20250820.feed_actions 
-WHERE toDate(time)='2025-08-23' 
-Group by toDate(time),city
-order by count_users desc,date 
-limit 5
-union all
-SELECT toDate(time) as date,city,Count(user_id) as count_users From simulator_20250820.feed_actions 
-WHERE toDate(time)='2025-08-24' 
-Group by toDate(time),city
-order by count_users desc,date 
-limit 5
-union all
-SELECT toDate(time) as date,city,Count(user_id) as count_users From simulator_20250820.feed_actions 
-WHERE toDate(time)='2025-08-25' 
-Group by toDate(time),city
-order by count_users desc,date 
-limit 5
-union all
-SELECT toDate(time) as date,city,Count(user_id) as count_users From simulator_20250820.feed_actions 
-WHERE toDate(time)='2025-08-26' 
-Group by toDate(time),city
-order by count_users desc,date 
-limit 5
-)
-order by date
-  ```
-**3.4.Активность по источнику входа и операционной системе**
+ - ### Активность по источнику входа и операционной системе в период с 19.08 по 26.08
 
 ![ос и источник входа](https://github.com/Alexa-grab/desktop-tutorial/blob/main/%D0%BF%D0%B0%D0%B4%D0%B5%D0%BD%D0%B8%D0%B5%209%20.png)
 
-- ВЫВОДЫ
-### Результаты анализа падения аудитории 24.08.25  
+   **Выводы по графикам**  
+
+   **1. Активность по источнику входа:**
+   - Органический трафик упал значительно сильнее рекламного;
+   - Оба источника показывают резкое снижение 24.08.
+
+   **2. Активность по ОС:**
+   - Android: катастрофическое падение на 502K событий (-65%);
+   - iOS: значительное снижение на 273K событий (-59%).
+
+ ## Падение аудитории: Основные выводы и рекомендации  
   
-  Основные наблюдения:
+  **Падение аудитории 24.08.25 — результат технического сбоя инфраструктуры.**
+
+ **1. Что произошло:**
+  - **Региональный сбой:** пользователи из Москвы, СПб, Новосибирска и других крупных городов не могли получить доступ к приложению.
+  - **Хронология:** проблемы начались ночью 23.08-24.08, пик падения пришелся на день 24.08, стабилизация к 21:00.
+  - **Масштаб:** потеря ~ 2 122 пользователей (-2,7% от общей базы).
+    
+  **2. Сильнее всего затронуты:**
+   - Органический трафик (наибольшее падение активности),
+   - Пользователи Android (снижение на 502 тыс. событий, −65%).
+   - Крупные города (Москва, СПб, Новосибирск).
+
+ **3. Возможные причины:**
+   - **Сбои в ключевых регионах инфраструктуры:**
+     - DNS;
+     - CDN;
+     - Магистральные каналы связи.
+    
+ **4. Рекомендации:**
+   - Провести детальный разбор инцидента с командой инфраструктуры: проверить логи DNS, CDN и сетевых провайдеров за 24.08.
+   - Настроить мониторинг доступности по регионам, ОС и типам трафика (органический/рекламный).
+   - Приоритетно усилить стабильность платформы для Android - как основной платформы органической аудитории.
+   - Создать план быстрого реагирования на региональные сбои (переключение на резервные серверы, смена CDN).
+   - Проработать коммуникацию для пользователей из пострадавших регионов (push-уведомления, соцсети) при повторении инцидента.
+
+  ### Вывод  
+  Проблема не в продукте, а в инфраструктуре — требуется усилить её отказоустойчивость, особенно для Android-устройств и органического трафика, составляющих основу аудитории.
+
   
-  - 24.08.25 зашло на 2122 пользователя меньше , по сравнению с предыдущим днем.  
-    Это не типичная ситуация(на прошлой неделе было равномерное распределение)
-  - Отток произошел по обоим каналам равномерно (органическому и рекламному)
-  - CTR начал падать с 03.00 AM и восстановился только к 10.30 PM
-  - В 4.00 AM меньше всего активности аудитории, но это типично для этого времени.
-  - Отсутствуют пользователи из топ-5 самых активных городов:  
-    Москвы,Санкт-Петербурга,Новосибирска и Екатеринбурга.
-  - Проблемы со стороны os :
-         - Вход с os andriod упал на 502К событий.
-         - Вход  с os IOS упал на 273К событий.
-
-Скорее всего, произошёл масштабный технический сбой на стороне вашего сервиса, который длился с примерно 03:00 AM до 22:30 PM.  
-Еще один момент, есть взаимосвязь между людьми пришедшими 15.08.25 по маркетинговой компании и днем массового сбоя системы 24.08.25.  
-Эти пользователи проявили наибольшую активность именно в этот день.  
-Возможно, это связано с тем, что столкнувшись с ошибкой входа, они начали проявлять  большую активность чем другие пользователи
-и пытались войти по рекламной ссылке.
-
-
+  
  
